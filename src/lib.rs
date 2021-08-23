@@ -1,3 +1,4 @@
+/// This li
 use futures::Future;
 use std::{
     collections::HashMap,
@@ -5,8 +6,6 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
     task::{Poll, Waker},
 };
-
-// u128 in observable mit für jeden future,
 
 #[derive(Clone, Debug)]
 pub struct Observable<T: Clone>(Arc<Mutex<Inner<T>>>);
@@ -28,10 +27,10 @@ impl<T: Clone> Observable<T> {
         inner.waker.clear();
     }
 
-    pub fn subscribe(&self) -> Subscribtion<T> {
+    pub fn subscribe(&self) -> Subscription<T> {
         let version = self.0.lock().unwrap().version;
 
-        Subscribtion {
+        Subscription {
             observable: self.clone(),
             version,
         }
@@ -70,12 +69,12 @@ impl<T: Clone> Inner<T> {
     }
 }
 
-pub struct Subscribtion<T: Clone> {
+pub struct Subscription<T: Clone> {
     observable: Observable<T>,
     version: u128,
 }
 
-impl<T: Clone> Subscribtion<T> {
+impl<T: Clone> Subscription<T> {
     // TODO: Can we ever have a poisoned mutex? Do we need to recover?
     pub(crate) fn into_inner_mutex(&self) -> MutexGuard<Inner<T>> {
         self.observable.0.lock().unwrap()
@@ -96,9 +95,10 @@ impl<T: Clone> Subscribtion<T> {
     }
 }
 
+#[doc(hidden)]
 pub struct AwaitSubscriptionUpdate<'a, T: Clone> {
     id: u128,
-    subscription: &'a mut Subscribtion<T>,
+    subscription: &'a mut Subscription<T>,
 }
 
 impl<'a, T: Clone> Future for AwaitSubscriptionUpdate<'a, T> {
