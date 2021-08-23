@@ -74,3 +74,62 @@ pub struct Subscribtion<T: Clone> {
     observable: Observable<T>,
     version: u128,
 }
+
+impl<T: Clone> Subscribtion<T> {
+    // TODO: Can we ever have a poisoned mutex? Do we need to recover?
+    pub(crate) fn into_inner_mutex(&self) -> MutexGuard<Inner<T>> {
+        self.observable.0.lock().unwrap()
+    }
+
+    pub fn next(&mut self) -> AwaitSubscriptionUpdate<'_, T> {
+        let id = {
+            let mut guard = self.into_inner_mutex();
+            let mut inner = guard.deref_mut();
+            inner.future_count += 1;
+            inner.future_count
+        };
+
+        AwaitSubscriptionUpdate {
+            id,
+            subscription: self,
+        }
+    }
+}
+
+pub struct AwaitSubscriptionUpdate<'a, T: Clone> {
+    id: u128,
+    subscription: &'a mut Subscribtion<T>,
+}
+
+impl<'a, T: Clone> Future for AwaitSubscriptionUpdate<'a, T> {
+    type Output = T;
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Self::Output> {
+        let mut guard = self.subscription.into_inner_mutex();
+        let inner = guard.deref_mut();
+
+        if self.subscription.version == inner.version {
+            inner.add_waker(self.id, cx.waker().clone());
+            Poll::Pending
+        } else {
+            inner.remove_waker(self.id);
+            let (version, value) = (inner.version, inner.value.clone());
+
+            drop(guard);
+
+            self.subscription.version = version;
+            Poll::Ready(value)
+        }
+    }
+}
+
+impl<'a, T: Clone> Drop for AwaitSubscriptionUpdate<'a, T> {
+    fn drop(&mut self) {
+        let mut guard = self.subscription.into_inner_mutex();
+        let inner = guard.deref_mut();
+        inner.remove_waker(self.id);
+    }
+}
