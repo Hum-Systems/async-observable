@@ -133,3 +133,82 @@ impl<'a, T: Clone> Drop for AwaitSubscriptionUpdate<'a, T> {
         inner.remove_waker(self.id);
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::Observable;
+    use async_std::future::timeout;
+    use async_std::task::{sleep, spawn};
+    use async_std::test;
+    use std::time::Duration;
+
+    const SLEEP_DURATION: Duration = Duration::from_millis(25);
+
+    #[test]
+    async fn should_work_sync() {
+        let mut int = Observable::new(1);
+        let mut subscription = int.subscribe();
+
+        int.publish(2);
+        assert_eq!(subscription.next().await, 2);
+        int.publish(3);
+        assert_eq!(subscription.next().await, 3);
+        int.publish(0);
+        assert_eq!(subscription.next().await, 0);
+    }
+
+    #[test]
+    async fn should_wait_for_publisher_task() {
+        let mut int = Observable::new(1);
+        let mut subscription = int.subscribe();
+
+        spawn(async move {
+            sleep(SLEEP_DURATION).await;
+            int.publish(2);
+            sleep(SLEEP_DURATION).await;
+            int.publish(3);
+            sleep(SLEEP_DURATION).await;
+            int.publish(0);
+        });
+
+        assert_eq!(subscription.next().await, 2);
+        assert_eq!(subscription.next().await, 3);
+        assert_eq!(subscription.next().await, 0);
+    }
+
+    #[test]
+    async fn should_skip_versions() {
+        let mut int = Observable::new(1);
+        let mut subscription = int.subscribe();
+
+        int.publish(2);
+        int.publish(3);
+        int.publish(0);
+
+        assert_eq!(subscription.next().await, 0);
+    }
+
+    #[test]
+    async fn should_remove_waker_on_future_drop() {
+        let int = Observable::new(1);
+        let mut subscription = int.subscribe();
+
+        for _ in 0..100 {
+            timeout(Duration::from_millis(10), subscription.next())
+                .await
+                .ok();
+
+            assert_eq!(int.waker_count(), 0);
+        }
+    }
+
+    #[test]
+    async fn should_wait_forever() {
+        let int = Observable::new(1);
+        let mut subscription = int.subscribe();
+
+        assert!(timeout(Duration::from_secs(1), subscription.next())
+            .await
+            .is_err());
+    }
+}
