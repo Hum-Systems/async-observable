@@ -1,4 +1,4 @@
-//! Async & reactive subscription model to keep multiple asynchronus tasks / threads partially
+//! Async & reactive subscription model to keep multiple async tasks / threads partially
 //! synchronized.
 //!
 //! ## Differentiation From Traditional Asnyc Streams
