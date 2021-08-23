@@ -1,4 +1,48 @@
-/// This li
+//! Async & reactive subscription model to keep multiple asynchronus tasks / threads partially
+//! synchronized.
+//!
+//! ## Differentiation From Traditional Asnyc Streams
+//! **Important:** A subscription is not a clonable `Stream<T>` – versions may be skipped on the
+//! subscription side if a subscription doesnt ask for updates anymore or if updates are published
+//! to quickly the subscription just retrieves the latest value.
+//!
+//! This is a powerful concept since it allows you to just skip the versions which are outdated by
+//! a newer version anyway and hence gain some performance advantage through the lazyness implied
+//! by this concept. Although the performance aspect is probably unimportant in most usecases it
+//! allows you to write simpler code since you dont need to take your position in the stream into
+//! account.
+//!
+//! ## Example
+//! ### Sharing A Counter To 10 Tasks
+//! ```rust
+//! use async_std::task::spawn;
+//! use async_sub::Observable;
+//!
+//! #[async_std::main]
+//! async fn main() {
+//!     let mut observable = Observable::new(0);
+//!     let mut tasks = vec![];
+//!
+//!     for i in 0..10 {
+//!         let mut subscription = observable.subscribe();
+//!
+//!         tasks.push(spawn(async move {
+//!             let update = subscription.wait().await;
+//!
+//!             println!(
+//!                 "Task {} was notified about updated observable {}",
+//!                 i, update
+//!             );
+//!         }));
+//!     }
+//!
+//!     observable.publish(1);
+//!
+//!     for t in tasks {
+//!         t.await
+//!     }
+//! }
+//! ```
 use futures::Future;
 use std::{
     collections::HashMap,
@@ -7,14 +51,41 @@ use std::{
     task::{Poll, Waker},
 };
 
+/// Wraps a value and lets you derive subscriptions to syncronize values between tasks and threads.
+///
+/// ## Creating Observables
+/// There are several ways to create a new observable, altough using the `new` function should be
+/// the preferred way.
+///
+/// ```rust
+/// let mut using_new = Observable::new(0);
+/// let mut using_from = Observable::from(u8);
+/// let mut using_into: Observable<u8> = 0.into();
+/// ```
+///
+/// ## Publishing New Values
+/// Publishing a new version is done by a single call to the `publish()` method.
+///
+/// ```rust
+/// observable.publish(1);
+/// observable.publish(2);
+/// observable.publish(3);
+/// ```
+///
+/// ## Important
+/// **Keep in mind that if you publish multiple versions directly after each other there no guarantees that
+/// all subscriptions recieve every change!** But as long as every subscription is constently asking
+/// for changes (via `wait()`) you are guaranteed that every subscription recieved the latest version.
 #[derive(Clone, Debug)]
 pub struct Observable<T: Clone>(Arc<Mutex<Inner<T>>>);
 
 impl<T: Clone> Observable<T> {
+    /// Create a new observable from any value.
     pub fn new(value: T) -> Self {
         Observable(Arc::new(Mutex::new(Inner::new(value))))
     }
 
+    /// Publish a change to all subscriptions and store it.
     pub fn publish(&mut self, value: T) {
         let mut inner = self.0.lock().unwrap();
         inner.version += 1;
@@ -27,18 +98,21 @@ impl<T: Clone> Observable<T> {
         inner.waker.clear();
     }
 
+    /// Create a new subscription for this observable.
     pub fn subscribe(&self) -> Subscription<T> {
-        let version = self.0.lock().unwrap().version;
-
-        Subscription {
-            observable: self.clone(),
-            version,
-        }
+        Subscription::from(self)
     }
 
     #[cfg(test)]
-    pub fn waker_count(&self) -> usize {
+    pub(crate) fn waker_count(&self) -> usize {
         self.0.lock().unwrap().waker.len()
+    }
+}
+
+impl<T: Clone> From<T> for Observable<T> {
+    /// Create a new observable from any value. Same as calling `new`.
+    fn from(value: T) -> Self {
+        Observable::new(value)
     }
 }
 
@@ -69,6 +143,25 @@ impl<T: Clone> Inner<T> {
     }
 }
 
+/// Represents a subscription to an observable value.
+///
+/// **Important:** A subscription is not guaranteed to fetch every update published,
+/// but to always have the latest update at the time you resolve the `wait()` future.
+///
+/// The only ways to retrieve an subscription are calling `subscribe()` on an observable or using
+/// `Subscription::from` directly.
+///
+/// Once subscribed you can use it like this:
+/// ```rust
+/// let mut observable = Observable::new(0);
+/// let mut subscription = observable.subscribe();
+///
+/// observable.publish(1);
+/// observable.publish(2);
+/// observable.publish(3);
+///
+/// assert_eq!(subscription.wait().await, 3);
+/// ```
 pub struct Subscription<T: Clone> {
     observable: Observable<T>,
     version: u128,
@@ -80,25 +173,45 @@ impl<T: Clone> Subscription<T> {
         self.observable.0.lock().unwrap()
     }
 
-    pub fn next(&mut self) -> AwaitSubscriptionUpdate<'_, T> {
-        let id = {
-            let mut guard = self.into_inner_mutex();
-            let mut inner = guard.deref_mut();
-            inner.future_count += 1;
-            inner.future_count
-        };
+    /// Wait until a new version of the subscibed observable was published and
+    /// return a clone of the new version.
+    pub async fn wait(&mut self) -> T {
+        AwaitSubscriptionUpdate::from(self).await
+    }
+}
 
-        AwaitSubscriptionUpdate {
-            id,
-            subscription: self,
+impl<T: Clone> From<&Observable<T>> for Subscription<T> {
+    /// Create a new subscription to an observable value.
+    fn from(observable: &Observable<T>) -> Self {
+        let version = observable.0.lock().unwrap().version;
+
+        Self {
+            observable: observable.clone(),
+            version,
         }
     }
 }
 
 #[doc(hidden)]
-pub struct AwaitSubscriptionUpdate<'a, T: Clone> {
+struct AwaitSubscriptionUpdate<'a, T: Clone> {
     id: u128,
     subscription: &'a mut Subscription<T>,
+}
+
+impl<'a, T: Clone> From<&'a mut Subscription<T>> for AwaitSubscriptionUpdate<'a, T> {
+    fn from(sub: &'a mut Subscription<T>) -> Self {
+        let id = {
+            let mut guard = sub.into_inner_mutex();
+            let mut inner = guard.deref_mut();
+            inner.future_count += 1;
+            inner.future_count
+        };
+
+        Self {
+            id,
+            subscription: sub,
+        }
+    }
 }
 
 impl<'a, T: Clone> Future for AwaitSubscriptionUpdate<'a, T> {
@@ -151,11 +264,11 @@ mod test {
         let mut subscription = int.subscribe();
 
         int.publish(2);
-        assert_eq!(subscription.next().await, 2);
+        assert_eq!(subscription.wait().await, 2);
         int.publish(3);
-        assert_eq!(subscription.next().await, 3);
+        assert_eq!(subscription.wait().await, 3);
         int.publish(0);
-        assert_eq!(subscription.next().await, 0);
+        assert_eq!(subscription.wait().await, 0);
     }
 
     #[test]
@@ -172,9 +285,9 @@ mod test {
             int.publish(0);
         });
 
-        assert_eq!(subscription.next().await, 2);
-        assert_eq!(subscription.next().await, 3);
-        assert_eq!(subscription.next().await, 0);
+        assert_eq!(subscription.wait().await, 2);
+        assert_eq!(subscription.wait().await, 3);
+        assert_eq!(subscription.wait().await, 0);
     }
 
     #[test]
@@ -186,7 +299,7 @@ mod test {
         int.publish(3);
         int.publish(0);
 
-        assert_eq!(subscription.next().await, 0);
+        assert_eq!(subscription.wait().await, 0);
     }
 
     #[test]
@@ -198,8 +311,8 @@ mod test {
         int.publish(3);
         int.publish(0);
 
-        assert_eq!(subscription.next().await, 0);
-        assert!(timeout(TIMEOUT_DURATION, subscription.next())
+        assert_eq!(subscription.wait().await, 0);
+        assert!(timeout(TIMEOUT_DURATION, subscription.wait())
             .await
             .is_err());
     }
@@ -210,7 +323,7 @@ mod test {
         let mut subscription = int.subscribe();
 
         for _ in 0..100 {
-            timeout(Duration::from_millis(10), subscription.next())
+            timeout(Duration::from_millis(10), subscription.wait())
                 .await
                 .ok();
 
@@ -223,7 +336,7 @@ mod test {
         let int = Observable::new(1);
         let mut subscription = int.subscribe();
 
-        assert!(timeout(TIMEOUT_DURATION, subscription.next())
+        assert!(timeout(TIMEOUT_DURATION, subscription.wait())
             .await
             .is_err());
     }
