@@ -143,6 +143,7 @@ mod test {
     use std::time::Duration;
 
     const SLEEP_DURATION: Duration = Duration::from_millis(25);
+    const TIMEOUT_DURATION: Duration = Duration::from_millis(500);
 
     #[test]
     async fn should_work_sync() {
@@ -189,6 +190,21 @@ mod test {
     }
 
     #[test]
+    async fn should_wait_after_skiped_versions() {
+        let mut int = Observable::new(1);
+        let mut subscription = int.subscribe();
+
+        int.publish(2);
+        int.publish(3);
+        int.publish(0);
+
+        assert_eq!(subscription.next().await, 0);
+        assert!(timeout(TIMEOUT_DURATION, subscription.next())
+            .await
+            .is_err());
+    }
+
+    #[test]
     async fn should_remove_waker_on_future_drop() {
         let int = Observable::new(1);
         let mut subscription = int.subscribe();
@@ -207,7 +223,7 @@ mod test {
         let int = Observable::new(1);
         let mut subscription = int.subscribe();
 
-        assert!(timeout(Duration::from_secs(1), subscription.next())
+        assert!(timeout(TIMEOUT_DURATION, subscription.next())
             .await
             .is_err());
     }
