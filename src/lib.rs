@@ -12,8 +12,8 @@
 //! allows you to write simpler code since you dont need to take your position in the stream into
 //! account.
 //!
-//! ## Example
-//! ### Sharing A Counter To 10 Tasks
+//! ## Examples
+//! ### Sharing A Counter Between Tasks
 //! ```rust
 //! use async_std::task::spawn;
 //! use async_sub::Observable;
@@ -58,8 +58,9 @@ use std::{
 /// the preferred way.
 ///
 /// ```rust
+/// # use async_sub::Observable;
 /// let mut using_new = Observable::new(0);
-/// let mut using_from = Observable::from(u8);
+/// let mut using_from = Observable::from(0);
 /// let mut using_into: Observable<u8> = 0.into();
 /// ```
 ///
@@ -67,6 +68,8 @@ use std::{
 /// Publishing a new version is done by a single call to the `publish()` method.
 ///
 /// ```rust
+/// # use async_sub::Observable;
+/// # let mut observable = Observable::new(0);
 /// observable.publish(1);
 /// observable.publish(2);
 /// observable.publish(3);
@@ -77,9 +80,14 @@ use std::{
 /// all subscriptions recieve every change!** But as long as every subscription is constently asking
 /// for changes (via `wait()`) you are guaranteed that every subscription recieved the latest version.
 #[derive(Clone, Debug)]
-pub struct Observable<T: Clone>(Arc<Mutex<Inner<T>>>);
+pub struct Observable<T>(Arc<Mutex<Inner<T>>>)
+where
+    T: Clone;
 
-impl<T: Clone> Observable<T> {
+impl<T> Observable<T>
+where
+    T: Clone,
+{
     /// Create a new observable from any value.
     pub fn new(value: T) -> Self {
         Observable(Arc::new(Mutex::new(Inner::new(value))))
@@ -109,7 +117,10 @@ impl<T: Clone> Observable<T> {
     }
 }
 
-impl<T: Clone> From<T> for Observable<T> {
+impl<T> From<T> for Observable<T>
+where
+    T: Clone,
+{
     /// Create a new observable from any value. Same as calling `new`.
     fn from(value: T) -> Self {
         Observable::new(value)
@@ -117,14 +128,20 @@ impl<T: Clone> From<T> for Observable<T> {
 }
 
 #[derive(Debug)]
-struct Inner<T: Clone> {
+struct Inner<T>
+where
+    T: Clone,
+{
     version: u128,
     future_count: u128,
     value: T,
     waker: HashMap<u128, Waker>,
 }
 
-impl<T: Clone> Inner<T> {
+impl<T> Inner<T>
+where
+    T: Clone,
+{
     pub fn new(value: T) -> Self {
         Self {
             version: 0,
@@ -153,6 +170,8 @@ impl<T: Clone> Inner<T> {
 ///
 /// Once subscribed you can use it like this:
 /// ```rust
+/// # use async_sub::{Observable, Subscription};
+/// # async {
 /// let mut observable = Observable::new(0);
 /// let mut subscription = observable.subscribe();
 ///
@@ -161,13 +180,20 @@ impl<T: Clone> Inner<T> {
 /// observable.publish(3);
 ///
 /// assert_eq!(subscription.wait().await, 3);
+/// # };
 /// ```
-pub struct Subscription<T: Clone> {
+pub struct Subscription<T>
+where
+    T: Clone,
+{
     observable: Observable<T>,
     version: u128,
 }
 
-impl<T: Clone> Subscription<T> {
+impl<T> Subscription<T>
+where
+    T: Clone,
+{
     // TODO: Can we ever have a poisoned mutex? Do we need to recover?
     pub(crate) fn into_inner_mutex(&self) -> MutexGuard<Inner<T>> {
         self.observable.0.lock().unwrap()
@@ -193,7 +219,10 @@ impl<T: Clone> From<&Observable<T>> for Subscription<T> {
 }
 
 #[doc(hidden)]
-struct AwaitSubscriptionUpdate<'a, T: Clone> {
+struct AwaitSubscriptionUpdate<'a, T>
+where
+    T: Clone,
+{
     id: u128,
     subscription: &'a mut Subscription<T>,
 }
@@ -214,7 +243,10 @@ impl<'a, T: Clone> From<&'a mut Subscription<T>> for AwaitSubscriptionUpdate<'a,
     }
 }
 
-impl<'a, T: Clone> Future for AwaitSubscriptionUpdate<'a, T> {
+impl<'a, T> Future for AwaitSubscriptionUpdate<'a, T>
+where
+    T: Clone,
+{
     type Output = T;
 
     fn poll(
@@ -239,7 +271,10 @@ impl<'a, T: Clone> Future for AwaitSubscriptionUpdate<'a, T> {
     }
 }
 
-impl<'a, T: Clone> Drop for AwaitSubscriptionUpdate<'a, T> {
+impl<'a, T> Drop for AwaitSubscriptionUpdate<'a, T>
+where
+    T: Clone,
+{
     fn drop(&mut self) {
         let mut guard = self.subscription.into_inner_mutex();
         let inner = guard.deref_mut();
