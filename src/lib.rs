@@ -329,7 +329,7 @@ mod test {
     const TIMEOUT_DURATION: Duration = Duration::from_millis(500);
 
     #[test]
-    async fn should_work_sync() {
+    async fn should_get_notified_sync() {
         let mut int = Observable::new(1);
         let mut subscription = int.subscribe();
 
@@ -337,6 +337,37 @@ mod test {
         assert_eq!(subscription.wait().await, 2);
         int.publish(3);
         assert_eq!(subscription.wait().await, 3);
+        int.publish(0);
+        assert_eq!(subscription.wait().await, 0);
+    }
+
+    #[test]
+    async fn should_get_notified_sync_multiple() {
+        let mut int = Observable::new(1);
+        let mut subscription_one = int.subscribe();
+        let mut subscription_two = int.subscribe();
+
+        int.publish(2);
+        assert_eq!(subscription_one.wait().await, 2);
+        assert_eq!(subscription_two.wait().await, 2);
+
+        int.publish(3);
+        assert_eq!(subscription_one.wait().await, 3);
+        assert_eq!(subscription_two.wait().await, 3);
+
+        int.publish(0);
+        assert_eq!(subscription_one.wait().await, 0);
+        assert_eq!(subscription_two.wait().await, 0);
+    }
+
+    #[test]
+    async fn should_skip_unchecked_updates() {
+        let mut int = Observable::new(1);
+        let mut subscription = int.subscribe();
+
+        int.publish(2);
+        assert_eq!(subscription.wait().await, 2);
+        int.publish(3);
         int.publish(0);
         assert_eq!(subscription.wait().await, 0);
     }
