@@ -182,6 +182,7 @@ where
 /// assert_eq!(subscription.wait().await, 3);
 /// # };
 /// ```
+#[derive(Debug)]
 pub struct Subscription<T>
 where
     T: Clone,
