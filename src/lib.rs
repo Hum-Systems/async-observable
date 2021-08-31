@@ -111,6 +111,12 @@ where
         Subscription::from(self)
     }
 
+    /// Creates a clone of the observable value
+    pub fn into_inner(&self) -> T {
+        let guard = self.0.lock().unwrap();
+        guard.value.clone()
+    }
+
     #[cfg(test)]
     pub(crate) fn waker_count(&self) -> usize {
         self.0.lock().unwrap().waker.len()
@@ -205,37 +211,10 @@ where
     pub async fn wait(&mut self) -> T {
         AwaitSubscriptionUpdate::from(self).await
     }
-    /// Enforce a synchronization of the subscription and observable state and obtain a clone of
-    /// the value.
-    ///
-    /// **Important:** There two things you need to be aware of when using this:
-    /// - The value returned did not necessarily change between calls!
-    /// - If an actual update is retrieved this is the moment to handle it!
-    ///
-    /// ```rust
-    /// # use async_sub::{Observable, Subscription};
-    /// # async {
-    /// let mut observable = Observable::new(1);
-    /// let mut subscription = observable.subscribe();
-    ///
-    /// assert_eq!(subscription.update_unchecked(), 1);
-    ///
-    /// observable.publish(2);
-    /// observable.publish(3);
-    ///
-    /// assert_eq!(subscription.update_unchecked(), 3);
-    /// assert_eq!(subscription.update_unchecked(), 3);
-    ///
-    /// subscription.wait().await // will wait forever!
-    /// # };
-    /// ```
-    pub fn update_unchecked(&mut self) -> T {
-        let (value, version) = {
-            let guard = self.into_inner_mutex();
-            (guard.value.clone(), guard.version)
-        };
-        self.version = version;
-        value
+
+    /// Creates a clone of the subscribed value
+    pub fn into_inner(&self) -> T {
+        self.observable.into_inner()
     }
 }
 
@@ -437,24 +416,6 @@ mod test {
     async fn should_wait_forever() {
         let int = Observable::new(1);
         let mut subscription = int.subscribe();
-
-        assert!(timeout(TIMEOUT_DURATION, subscription.wait())
-            .await
-            .is_err());
-    }
-
-    #[test]
-    async fn should_update_unchecked() {
-        let mut observable = Observable::new(1);
-        let mut subscription = observable.subscribe();
-
-        assert_eq!(subscription.update_unchecked(), 1);
-
-        observable.publish(2);
-        observable.publish(3);
-
-        assert_eq!(subscription.update_unchecked(), 3);
-        assert_eq!(subscription.update_unchecked(), 3);
 
         assert!(timeout(TIMEOUT_DURATION, subscription.wait())
             .await
