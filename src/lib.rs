@@ -96,7 +96,7 @@ where
 
     /// Publish a change to all subscriptions and store it.
     pub fn publish(&mut self, value: T) {
-        let mut inner = self.0.lock().unwrap();
+        let mut inner = self.lock();
         inner.version += 1;
         inner.value = value;
 
@@ -114,8 +114,15 @@ where
 
     /// Creates a clone of the observable value
     pub fn into_inner(&self) -> T {
-        let guard = self.0.lock().unwrap();
-        guard.value.clone()
+        let inner = self.lock();
+        inner.value.clone()
+    }
+
+    fn lock(&self) -> MutexGuard<Inner<T>> {
+        match self.0.lock() {
+            Ok(guard) => guard,
+            Err(e) => e.into_inner(),
+        }
     }
 
     #[cfg(test)]
@@ -139,8 +146,11 @@ where
     T: Clone + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Observable")
-            .field(&self.into_inner())
+        let inner = self.lock();
+
+        f.debug_struct("Observable")
+            .field("value", &inner.value)
+            .field("version", &inner.version)
             .finish()
     }
 }
