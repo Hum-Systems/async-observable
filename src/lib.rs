@@ -46,6 +46,7 @@
 use futures::Future;
 use std::{
     collections::HashMap,
+    fmt,
     ops::DerefMut,
     sync::{Arc, Mutex, MutexGuard},
     task::{Poll, Waker},
@@ -79,7 +80,7 @@ use std::{
 /// **Keep in mind that if you publish multiple versions directly after each other there no guarantees that
 /// all subscriptions recieve every change!** But as long as every subscription is constently asking
 /// for changes (via `wait()`) you are guaranteed that every subscription recieved the latest version.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Observable<T>(Arc<Mutex<Inner<T>>>)
 where
     T: Clone;
@@ -130,6 +131,17 @@ where
     /// Create a new observable from any value. Same as calling `new`.
     fn from(value: T) -> Self {
         Observable::new(value)
+    }
+}
+
+impl<T> fmt::Debug for Observable<T>
+where
+    T: Clone + fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Observable")
+            .field(&self.into_inner())
+            .finish()
     }
 }
 
