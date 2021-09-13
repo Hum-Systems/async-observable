@@ -8,7 +8,7 @@ authors = [
 ]
 repository = "https://github.com/Hum-Systems/async-sub"
 documentation = "https://docs.rs/async-sub"
-keywords = ["async", "await", "reactive", "observer", "subscription"]
+keywords = ["async", "await", "reactive", "observable", "synchronization"]
 categories = ["asynchronous", "concurrency", "network-programming"]
 readme = "README.md"
 

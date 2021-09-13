@@ -78,12 +78,6 @@ use std::{
 ///
 /// ## Receiving Updates
 ///
-/// ### Important
-/// **Keep in mind that if you publish multiple versions directly after each other there no
-/// guarantees that all forked observables will receive every change!** But as long as every
-/// observable is constently asking for changes (via `next()`) you are guaranteed that every
-/// observable received the latest version.
-///
 /// ```rust
 /// # use async_sub::Observable;
 /// # async {
@@ -97,6 +91,12 @@ use std::{
 /// assert_eq!(fork.next().await, 3);
 /// # };
 /// ```
+///
+/// ### Important
+/// **Keep in mind that if you publish multiple versions directly after each other there no
+/// guarantees that all forked observables will receive every change!** But as long as every
+/// observable is constently asking for changes (via `next()`) you are guaranteed that every
+/// observable received the latest version.
 #[derive(Clone)]
 pub struct Observable<T>
 where
