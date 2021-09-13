@@ -7,10 +7,10 @@ async fn main() {
     let mut tasks = vec![];
 
     for i in 0..10 {
-        let mut subscription = observable.subscribe();
+        let mut fork = observable.fork();
 
         tasks.push(spawn(async move {
-            let update = subscription.next().await;
+            let update = fork.next().await;
 
             println!(
                 "Task {} was notified about updated observable {}",
