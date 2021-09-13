@@ -465,7 +465,55 @@ mod test {
         let int = Observable::new(1);
         let mut subscription = int.subscribe();
 
-        assert!(timeout(TIMEOUT_DURATION, subscription.wait())
+        assert!(timeout(TIMEOUT_DURATION, subscription.next())
+            .await
+            .is_err());
+    }
+
+    #[test]
+    async fn should_get_latest_without_loosing_updates() {
+        let mut int = Observable::new(1);
+        let mut subscription = int.subscribe();
+
+        int.publish(2);
+
+        assert_eq!(subscription.latest(), 2);
+        assert_eq!(subscription.latest(), 2);
+
+        assert_eq!(subscription.next().await, 2);
+    }
+
+    #[test]
+    async fn should_skip_updates_while_synchronizing() {
+        let mut int = Observable::new(1);
+        let mut subscription = int.subscribe();
+
+        int.publish(2);
+        int.publish(3);
+
+        assert_eq!(subscription.synchronize(), 3);
+
+        assert!(timeout(TIMEOUT_DURATION, subscription.next())
+            .await
+            .is_err());
+    }
+
+    #[test]
+    async fn should_synchronize_multiple_times() {
+        let mut int = Observable::new(1);
+        let mut subscription = int.subscribe();
+
+        int.publish(2);
+        int.publish(3);
+
+        assert_eq!(subscription.synchronize(), 3);
+        assert_eq!(subscription.synchronize(), 3);
+
+        int.publish(4);
+
+        assert_eq!(subscription.synchronize(), 4);
+
+        assert!(timeout(TIMEOUT_DURATION, subscription.next())
             .await
             .is_err());
     }
