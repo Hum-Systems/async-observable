@@ -10,7 +10,7 @@ async fn main() {
         let mut subscription = observable.subscribe();
 
         tasks.push(spawn(async move {
-            let update = subscription.wait().await;
+            let update = subscription.next().await;
 
             println!(
                 "Task {} was notified about updated observable {}",

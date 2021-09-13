@@ -27,7 +27,7 @@
 //!         let mut subscription = observable.subscribe();
 //!
 //!         tasks.push(spawn(async move {
-//!             let update = subscription.wait().await;
+//!             let update = subscription.next().await;
 //!
 //!             println!(
 //!                 "Task {} was notified about updated observable {}",
@@ -52,7 +52,7 @@ use std::{
     task::{Poll, Waker},
 };
 
-/// Wraps a value and lets you derive subscriptions to syncronize values between tasks and threads.
+/// Wraps a value and lets you derive subscriptions to synchronize values between tasks and threads.
 ///
 /// ## Creating Observables
 /// There are several ways to create a new observable, altough using the `new` function should be
@@ -79,7 +79,7 @@ use std::{
 /// ## Important
 /// **Keep in mind that if you publish multiple versions directly after each other there no guarantees that
 /// all subscriptions recieve every change!** But as long as every subscription is constently asking
-/// for changes (via `wait()`) you are guaranteed that every subscription recieved the latest version.
+/// for changes (via `next()`) you are guaranteed that every subscription recieved the latest version.
 #[derive(Clone)]
 pub struct Observable<T>(Arc<Mutex<Inner<T>>>)
 where
@@ -207,7 +207,7 @@ where
 /// observable.publish(2);
 /// observable.publish(3);
 ///
-/// assert_eq!(subscription.wait().await, 3);
+/// assert_eq!(subscription.next().await, 3);
 /// # };
 /// ```
 #[derive(Debug)]
@@ -336,11 +336,11 @@ mod test {
         let mut subscription = int.subscribe();
 
         int.publish(2);
-        assert_eq!(subscription.wait().await, 2);
+        assert_eq!(subscription.next().await, 2);
         int.publish(3);
-        assert_eq!(subscription.wait().await, 3);
+        assert_eq!(subscription.next().await, 3);
         int.publish(0);
-        assert_eq!(subscription.wait().await, 0);
+        assert_eq!(subscription.next().await, 0);
     }
 
     #[test]
@@ -350,16 +350,16 @@ mod test {
         let mut subscription_two = int.subscribe();
 
         int.publish(2);
-        assert_eq!(subscription_one.wait().await, 2);
-        assert_eq!(subscription_two.wait().await, 2);
+        assert_eq!(subscription_one.next().await, 2);
+        assert_eq!(subscription_two.next().await, 2);
 
         int.publish(3);
-        assert_eq!(subscription_one.wait().await, 3);
-        assert_eq!(subscription_two.wait().await, 3);
+        assert_eq!(subscription_one.next().await, 3);
+        assert_eq!(subscription_two.next().await, 3);
 
         int.publish(0);
-        assert_eq!(subscription_one.wait().await, 0);
-        assert_eq!(subscription_two.wait().await, 0);
+        assert_eq!(subscription_one.next().await, 0);
+        assert_eq!(subscription_two.next().await, 0);
     }
 
     #[test]
@@ -368,10 +368,10 @@ mod test {
         let mut subscription = int.subscribe();
 
         int.publish(2);
-        assert_eq!(subscription.wait().await, 2);
+        assert_eq!(subscription.next().await, 2);
         int.publish(3);
         int.publish(0);
-        assert_eq!(subscription.wait().await, 0);
+        assert_eq!(subscription.next().await, 0);
     }
 
     #[test]
@@ -388,9 +388,9 @@ mod test {
             int.publish(0);
         });
 
-        assert_eq!(subscription.wait().await, 2);
-        assert_eq!(subscription.wait().await, 3);
-        assert_eq!(subscription.wait().await, 0);
+        assert_eq!(subscription.next().await, 2);
+        assert_eq!(subscription.next().await, 3);
+        assert_eq!(subscription.next().await, 0);
     }
 
     #[test]
@@ -402,7 +402,7 @@ mod test {
         int.publish(3);
         int.publish(0);
 
-        assert_eq!(subscription.wait().await, 0);
+        assert_eq!(subscription.next().await, 0);
     }
 
     #[test]
@@ -414,8 +414,8 @@ mod test {
         int.publish(3);
         int.publish(0);
 
-        assert_eq!(subscription.wait().await, 0);
-        assert!(timeout(TIMEOUT_DURATION, subscription.wait())
+        assert_eq!(subscription.next().await, 0);
+        assert!(timeout(TIMEOUT_DURATION, subscription.next())
             .await
             .is_err());
     }
@@ -426,7 +426,7 @@ mod test {
         let mut subscription = int.subscribe();
 
         for _ in 0..100 {
-            timeout(Duration::from_millis(10), subscription.wait())
+            timeout(Duration::from_millis(10), subscription.next())
                 .await
                 .ok();
 
