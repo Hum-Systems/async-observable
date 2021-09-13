@@ -113,7 +113,7 @@ where
     }
 
     /// Creates a clone of the observable value
-    pub fn into_inner(&self) -> T {
+    pub fn latest(&self) -> T {
         let inner = self.lock();
         inner.value.clone()
     }
@@ -191,7 +191,7 @@ where
 /// Represents a subscription to an observable value.
 ///
 /// **Important:** A subscription is not guaranteed to fetch every update published,
-/// but to always have the latest update at the time you resolve the `wait()` future.
+/// but to always have the latest update at the time you resolve the `next()` future.
 ///
 /// The only ways to retrieve an subscription are calling `subscribe()` on an observable or using
 /// `Subscription::from` directly.
@@ -223,20 +223,46 @@ impl<T> Subscription<T>
 where
     T: Clone,
 {
-    // TODO: Can we ever have a poisoned mutex? Do we need to recover?
     pub(crate) fn into_inner_mutex(&self) -> MutexGuard<Inner<T>> {
-        self.observable.0.lock().unwrap()
+        match self.observable.0.lock() {
+            Ok(guard) => guard,
+            Err(e) => e.into_inner(),
+        }
     }
 
     /// Wait until a new version of the subscibed observable was published and
     /// return a clone of the new version.
-    pub async fn wait(&mut self) -> T {
+    pub async fn next(&mut self) -> T {
         AwaitSubscriptionUpdate::from(self).await
     }
 
-    /// Creates a clone of the subscribed value
-    pub fn into_inner(&self) -> T {
-        self.observable.into_inner()
+    /// Creates a clone of latest version of the subscribed value.
+    pub fn latest(&self) -> T {
+        self.observable.latest()
+    }
+
+    /// Skip any potential updates and retrieve the latest version of the
+    /// subscribed value.
+    ///
+    /// ```rust
+    /// # use async_sub::{Observable, Subscription};
+    /// # async {
+    /// let mut observable = Observable::new(0);
+    /// let mut subscription = observable.subscribe();
+    ///
+    /// observable.publish(1);
+    /// observable.publish(2);
+    /// observable.publish(3);
+    ///
+    /// assert_eq!(subscription.synchronize(), 3);
+    ///
+    /// subscription.next().await; // runs forever!
+    /// # };
+    /// ```
+    pub fn synchronize(&mut self) -> T {
+        let inner = self.observable.lock();
+        self.version = inner.version;
+        inner.value.clone()
     }
 }
 
