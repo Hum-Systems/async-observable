@@ -1,10 +1,10 @@
-//! Async & reactive subscription model to keep multiple async tasks / threads partially
+//! Async & reactive synchronization model to keep multiple async tasks / threads partially
 //! synchronized.
 //!
 //! ## Differentiation From Traditional Asnyc Streams
-//! **Important:** A subscription is not a clonable `Stream<T>` – versions may be skipped on the
-//! subscription side if a subscription doesnt ask for updates anymore or if updates are published
-//! to quickly the subscription just retrieves the latest value.
+//! **Important:** An observable is not a clonable `Stream<T>` – versions may be skipped on the
+//! receiving side, if it doesnt ask for updates anymore or if updates are published to quickly the
+//! receiving observable just retrieves the latest value.
 //!
 //! This is a powerful concept since it allows you to just skip the versions which are outdated by
 //! a newer version anyway and hence gain some performance advantage through the lazyness implied
@@ -52,9 +52,9 @@ use std::{
     task::{Poll, Waker},
 };
 
-/// Wraps a value and lets you derive subscriptions to synchronize values between tasks and threads.
+/// Wraps a value and lets you fork the value to synchronize it between tasks and threads.
 ///
-/// ## Creating Observables
+/// ## Creating New Observables
 /// There are several ways to create a new observable, altough using the `new` function should be
 /// the preferred way.
 ///
@@ -76,10 +76,27 @@ use std::{
 /// observable.publish(3);
 /// ```
 ///
-/// ## Important
-/// **Keep in mind that if you publish multiple versions directly after each other there no guarantees that
-/// all subscriptions recieve every change!** But as long as every subscription is constently asking
-/// for changes (via `next()`) you are guaranteed that every subscription recieved the latest version.
+/// ## Receiving Updates
+///
+/// ### Important
+/// **Keep in mind that if you publish multiple versions directly after each other there no
+/// guarantees that all forked observables will receive every change!** But as long as every
+/// observable is constently asking for changes (via `next()`) you are guaranteed that every
+/// observable received the latest version.
+///
+/// ```rust
+/// # use async_sub::Observable;
+/// # async {
+/// let mut observable = Observable::new(0);
+/// let mut fork = observable.fork();
+///
+/// observable.publish(1);
+/// observable.publish(2);
+/// observable.publish(3);
+///
+/// assert_eq!(fork.next().await, 3);
+/// # };
+/// ```
 #[derive(Clone)]
 pub struct Observable<T>
 where
@@ -101,7 +118,7 @@ where
         }
     }
 
-    /// Publish a change to all subscriptions and store it.
+    /// Publish a change all observables and store it.
     pub fn publish(&mut self, value: T) {
         let mut inner = self.lock();
         inner.version += 1;
@@ -133,28 +150,28 @@ where
         inner.value.clone()
     }
 
-    /// Wait until a new version of the subscibed observable was published and
-    /// return a clone of the new version.
+    /// Wait until a new version of the observable was published and return a
+    /// clone of the new version.
     pub async fn next(&mut self) -> T {
         AwaitObservableUpdate::from(self).await
     }
 
     /// Skip any potential updates and retrieve the latest version of the
-    /// subscribed value.
+    /// observed value.
     ///
     /// ```rust
     /// # use async_sub::Observable;
     /// # async {
     /// let mut observable = Observable::new(0);
-    /// let mut subscription = observable.subscribe();
+    /// let mut fork = observable.fork();
     ///
     /// observable.publish(1);
     /// observable.publish(2);
     /// observable.publish(3);
     ///
-    /// assert_eq!(subscription.synchronize(), 3);
+    /// assert_eq!(fork.synchronize(), 3);
     ///
-    /// subscription.next().await; // runs forever!
+    /// fork.next().await; // runs forever!
     /// # };
     /// ```
     pub fn synchronize(&mut self) -> T {
@@ -247,29 +264,6 @@ where
             .finish()
     }
 }
-
-/// Represents a subscription to an observable value.
-///
-/// **Important:** A subscription is not guaranteed to fetch every update published,
-/// but to always have the latest update at the time you resolve the `next()` future.
-///
-/// The only ways to retrieve an subscription are calling `subscribe()` on an observable or using
-/// `Subscription::from` directly.
-///
-/// Once subscribed you can use it like this:
-/// ```rust
-/// # use async_sub::Observable;
-/// # async {
-/// let mut observable = Observable::new(0);
-/// let mut subscription = observable.subscribe();
-///
-/// observable.publish(1);
-/// observable.publish(2);
-/// observable.publish(3);
-///
-/// assert_eq!(subscription.next().await, 3);
-/// # };
-/// ```
 
 #[doc(hidden)]
 struct AwaitObservableUpdate<'a, T>
