@@ -478,161 +478,235 @@ mod test {
     use super::Observable;
     use async_std::future::timeout;
     use async_std::task::{sleep, spawn};
-    use async_std::test;
     use std::time::Duration;
 
     const SLEEP_DURATION: Duration = Duration::from_millis(25);
     const TIMEOUT_DURATION: Duration = Duration::from_millis(500);
 
-    #[test]
-    async fn should_get_notified_sync() {
-        let mut int = Observable::new(1);
-        let mut other = int.fork();
+    mod publishing {
+        use super::*;
+        use async_std::test;
 
-        int.publish(2);
-        assert_eq!(other.next().await, 2);
-        int.publish(3);
-        assert_eq!(other.next().await, 3);
-        int.publish(0);
-        assert_eq!(other.next().await, 0);
-    }
+        #[test]
+        async fn should_get_notified_sync() {
+            let mut int = Observable::new(1);
+            let mut other = int.fork();
 
-    #[test]
-    async fn should_get_notified_sync_multiple() {
-        let mut int = Observable::new(1);
-        let mut fork_one = int.fork();
-        let mut fork_two = int.fork();
-
-        int.publish(2);
-        assert_eq!(fork_one.next().await, 2);
-        assert_eq!(fork_two.next().await, 2);
-
-        int.publish(3);
-        assert_eq!(fork_one.next().await, 3);
-        assert_eq!(fork_two.next().await, 3);
-
-        int.publish(0);
-        assert_eq!(fork_one.next().await, 0);
-        assert_eq!(fork_two.next().await, 0);
-    }
-
-    #[test]
-    async fn should_skip_unchecked_updates() {
-        let mut int = Observable::new(1);
-        let mut fork = int.fork();
-
-        int.publish(2);
-        assert_eq!(fork.next().await, 2);
-        int.publish(3);
-        int.publish(0);
-        assert_eq!(fork.next().await, 0);
-    }
-
-    #[test]
-    async fn should_wait_for_publisher_task() {
-        let mut int = Observable::new(1);
-        let mut fork = int.fork();
-
-        spawn(async move {
-            sleep(SLEEP_DURATION).await;
             int.publish(2);
-            sleep(SLEEP_DURATION).await;
+            assert_eq!(other.next().await, 2);
             int.publish(3);
-            sleep(SLEEP_DURATION).await;
+            assert_eq!(other.next().await, 3);
             int.publish(0);
-        });
+            assert_eq!(other.next().await, 0);
+        }
 
-        assert_eq!(fork.next().await, 2);
-        assert_eq!(fork.next().await, 3);
-        assert_eq!(fork.next().await, 0);
-    }
+        #[test]
+        async fn should_get_notified_sync_multiple() {
+            let mut int = Observable::new(1);
+            let mut fork_one = int.fork();
+            let mut fork_two = int.fork();
 
-    #[test]
-    async fn should_skip_versions() {
-        let mut int = Observable::new(1);
-        let mut fork = int.fork();
+            int.publish(2);
+            assert_eq!(fork_one.next().await, 2);
+            assert_eq!(fork_two.next().await, 2);
 
-        int.publish(2);
-        int.publish(3);
-        int.publish(0);
+            int.publish(3);
+            assert_eq!(fork_one.next().await, 3);
+            assert_eq!(fork_two.next().await, 3);
 
-        assert_eq!(fork.next().await, 0);
-    }
+            int.publish(0);
+            assert_eq!(fork_one.next().await, 0);
+            assert_eq!(fork_two.next().await, 0);
+        }
 
-    #[test]
-    async fn should_wait_after_skiped_versions() {
-        let mut int = Observable::new(1);
-        let mut fork = int.fork();
+        #[test]
+        async fn should_publish_after_modify() {
+            let mut int = Observable::new(1);
+            let mut fork = int.fork();
 
-        int.publish(2);
-        int.publish(3);
-        int.publish(0);
+            int.modify(|i| *i += 1);
+            assert_eq!(fork.next().await, 2);
 
-        assert_eq!(fork.next().await, 0);
-        assert!(timeout(TIMEOUT_DURATION, fork.next()).await.is_err());
-    }
+            int.modify(|i| *i += 1);
+            assert_eq!(fork.next().await, 3);
 
-    #[test]
-    async fn should_remove_waker_on_future_drop() {
-        let int = Observable::new(1);
-        let mut fork = int.fork();
+            int.modify(|i| *i -= 2);
+            assert_eq!(fork.next().await, 1);
 
-        for _ in 0..100 {
-            timeout(Duration::from_millis(10), fork.next()).await.ok();
+            int.modify(|i| *i -= 2);
+            assert_eq!(fork.next().await, -1);
+        }
 
-            assert_eq!(int.waker_count(), 0);
+        #[test]
+        async fn should_conditionally_modify() {
+            let mut int = Observable::new(1);
+
+            int.modify_conditional(|i| i % 2 == 0, |i| *i *= 2);
+            assert_eq!(int.latest(), 1);
+
+            int.modify_conditional(|i| i % 2 == 1, |i| *i *= 2);
+            assert_eq!(int.latest(), 2);
+
+            int.modify_conditional(|i| i % 2 == 0, |i| *i = 1000);
+            assert_eq!(int.latest(), 1000);
+        }
+
+        #[test]
+        async fn shouldnt_publish_same_change() {
+            let mut int = Observable::new(1);
+            int.publish_if_changed(1);
+            assert!(timeout(TIMEOUT_DURATION, int.next()).await.is_err());
+        }
+
+        #[test]
+        async fn should_publish_changed() {
+            let mut int = Observable::new(1);
+
+            int.publish_if_changed(2);
+            assert_eq!(int.synchronize(), 2);
+
+            int.publish_if_changed(2);
+            assert!(timeout(TIMEOUT_DURATION, int.next()).await.is_err());
         }
     }
 
-    #[test]
-    async fn should_wait_forever() {
-        let int = Observable::new(1);
-        let mut fork = int.fork();
+    mod versions {
+        use super::*;
+        use async_std::test;
 
-        assert!(timeout(TIMEOUT_DURATION, fork.next()).await.is_err());
+        #[test]
+        async fn should_skip_versions() {
+            let mut int = Observable::new(1);
+            let mut fork = int.fork();
+
+            int.publish(2);
+            int.publish(3);
+            int.publish(0);
+
+            assert_eq!(fork.next().await, 0);
+        }
+
+        #[test]
+        async fn should_wait_after_skiped_versions() {
+            let mut int = Observable::new(1);
+            let mut fork = int.fork();
+
+            int.publish(2);
+            int.publish(3);
+            int.publish(0);
+
+            assert_eq!(fork.next().await, 0);
+            assert!(timeout(TIMEOUT_DURATION, fork.next()).await.is_err());
+        }
+
+        #[test]
+        async fn should_skip_unchecked_updates() {
+            let mut int = Observable::new(1);
+            let mut fork = int.fork();
+
+            int.publish(2);
+            assert_eq!(fork.next().await, 2);
+            int.publish(3);
+            int.publish(0);
+            assert_eq!(fork.next().await, 0);
+        }
     }
 
-    #[test]
-    async fn should_get_latest_without_loosing_updates() {
-        let mut int = Observable::new(1);
-        let mut fork = int.fork();
+    mod asynchronous {
+        use super::*;
+        use async_std::test;
 
-        int.publish(2);
+        #[test]
+        async fn should_wait_for_publisher_task() {
+            let mut int = Observable::new(1);
+            let mut fork = int.fork();
 
-        assert_eq!(fork.latest(), 2);
-        assert_eq!(fork.latest(), 2);
+            spawn(async move {
+                sleep(SLEEP_DURATION).await;
+                int.publish(2);
+                sleep(SLEEP_DURATION).await;
+                int.publish(3);
+                sleep(SLEEP_DURATION).await;
+                int.publish(0);
+            });
 
-        assert_eq!(fork.next().await, 2);
+            assert_eq!(fork.next().await, 2);
+            assert_eq!(fork.next().await, 3);
+            assert_eq!(fork.next().await, 0);
+        }
     }
 
-    #[test]
-    async fn should_skip_updates_while_synchronizing() {
-        let mut int = Observable::new(1);
-        let mut fork = int.fork();
+    mod synchronization {
+        use super::*;
+        use async_std::test;
 
-        int.publish(2);
-        int.publish(3);
+        #[test]
+        async fn should_get_latest_without_loosing_updates() {
+            let mut int = Observable::new(1);
+            let mut fork = int.fork();
 
-        assert_eq!(fork.synchronize(), 3);
+            int.publish(2);
 
-        assert!(timeout(TIMEOUT_DURATION, fork.next()).await.is_err());
+            assert_eq!(fork.latest(), 2);
+            assert_eq!(fork.latest(), 2);
+
+            assert_eq!(fork.next().await, 2);
+        }
+
+        #[test]
+        async fn should_skip_updates_while_synchronizing() {
+            let mut int = Observable::new(1);
+            let mut fork = int.fork();
+
+            int.publish(2);
+            int.publish(3);
+
+            assert_eq!(fork.synchronize(), 3);
+
+            assert!(timeout(TIMEOUT_DURATION, fork.next()).await.is_err());
+        }
+
+        #[test]
+        async fn should_synchronize_multiple_times() {
+            let mut int = Observable::new(1);
+            let mut fork = int.fork();
+
+            int.publish(2);
+            int.publish(3);
+
+            assert_eq!(fork.synchronize(), 3);
+            assert_eq!(fork.synchronize(), 3);
+
+            int.publish(4);
+
+            assert_eq!(fork.synchronize(), 4);
+
+            assert!(timeout(TIMEOUT_DURATION, fork.next()).await.is_err());
+        }
     }
 
-    #[test]
-    async fn should_synchronize_multiple_times() {
-        let mut int = Observable::new(1);
-        let mut fork = int.fork();
+    mod future {
+        use super::*;
+        use async_std::test;
 
-        int.publish(2);
-        int.publish(3);
+        #[test]
+        async fn should_remove_waker_on_future_drop() {
+            let int = Observable::new(1);
+            let mut fork = int.fork();
 
-        assert_eq!(fork.synchronize(), 3);
-        assert_eq!(fork.synchronize(), 3);
+            for _ in 0..100 {
+                timeout(Duration::from_millis(10), fork.next()).await.ok();
 
-        int.publish(4);
+                assert_eq!(int.waker_count(), 0);
+            }
+        }
 
-        assert_eq!(fork.synchronize(), 4);
+        #[test]
+        async fn should_wait_forever() {
+            let int = Observable::new(1);
+            let mut fork = int.fork();
 
-        assert!(timeout(TIMEOUT_DURATION, fork.next()).await.is_err());
+            assert!(timeout(TIMEOUT_DURATION, fork.next()).await.is_err());
+        }
     }
 }
