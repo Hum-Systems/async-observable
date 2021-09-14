@@ -208,12 +208,33 @@ where
         inner.waker.clear();
     }
 
-    /// Create a new observable from this observable.
+    /// Create a new observable from this observable. Both will listen to the same underlying value.
+    ///
+    /// ```rust
+    /// # use async_sub::Observable;
+    /// # async {
+    /// let mut observable = Observable::new(0);
+    /// let mut fork = observable.fork();
+    ///
+    /// fork.next().await; // runs forever!
+    /// # };
+    /// ```
     pub fn fork(&self) -> Observable<T> {
         self.clone()
     }
 
-    /// Create a new observable from this observable and reset it to the initial state.
+    /// Same as fork, but *the reset causes the fork to instantly have a change available* with the
+    /// current state.
+    ///
+    /// ```rust
+    /// # use async_sub::Observable;
+    /// # async {
+    /// let mut observable = Observable::new(0);
+    /// let mut fork = observable.fork_and_reset();
+    ///
+    /// assert_eq!(fork.next().await, 0);
+    /// # };
+    /// ```
     pub fn fork_and_reset(&self) -> Observable<T> {
         Self {
             inner: self.inner.clone(),
@@ -221,7 +242,20 @@ where
         }
     }
 
-    /// Creates a clone of latest version of the observable value.
+    /// Creates a clone of latest version of the observable value, *without consuming the change!*
+    ///
+    /// ```rust
+    /// # use async_sub::Observable;
+    /// # async {
+    /// let mut observable = Observable::new(0);
+    /// let mut fork = observable.fork_and_reset();
+    ///
+    /// observable.publish(1);
+    ///
+    /// assert_eq!(fork.latest(), 1);
+    /// assert_eq!(fork.next().await, 1);
+    /// # };
+    /// ```
     pub fn latest(&self) -> T {
         let inner = self.lock();
         inner.value.clone()
@@ -229,6 +263,22 @@ where
 
     /// Wait until a new version of the observable was published and return a
     /// clone of the new version.
+    ///
+    /// ```rust
+    /// # use async_sub::Observable;
+    /// # async {
+    /// let mut observable = Observable::new(0);
+    /// let mut fork = observable.fork_and_reset();
+    ///
+    /// observable.publish(1);
+    /// assert_eq!(fork.next().await, 1);
+    ///
+    /// observable.publish(2);
+    /// assert_eq!(fork.next().await, 2);
+    ///
+    /// fork.next().await; // runs forever!
+    /// # };
+    /// ```
     pub async fn next(&mut self) -> T {
         AwaitObservableUpdate::from(self).await
     }
