@@ -152,7 +152,7 @@ where
         M: FnOnce(&mut T),
     {
         self.apply(|value| {
-            if condition(&value) {
+            if condition(value) {
                 modify(value);
                 Some(value)
             } else {
@@ -195,13 +195,13 @@ where
     {
         let mut inner = self.lock();
 
-        if let None = change(&mut inner.value) {
+        if change(&mut inner.value).is_none() {
             return;
         }
 
         inner.version += 1;
 
-        for (_, waker) in &inner.waker {
+        for waker in inner.waker.values() {
             waker.wake_by_ref();
         }
 
