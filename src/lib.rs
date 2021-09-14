@@ -118,11 +118,88 @@ where
         }
     }
 
-    /// Publish a change all observables and store it.
+    /// Store provided value and notify forks.
     pub fn publish(&mut self, value: T) {
+        self.modify(|v| *v = value);
+    }
+
+    /// Modify the underlying value and notify forks.
+    pub fn modify<M>(&mut self, modify: M)
+    where
+        M: FnOnce(&mut T),
+    {
+        self.modify_conditional(|_| true, modify);
+    }
+
+    /// If the condition is met, modify the underlying value and notify forks.
+    ///
+    /// ```rust
+    /// # use async_sub::Observable;
+    /// # async {
+    /// let mut observable = Observable::new(0);
+    /// let mut fork = observable.fork();
+    ///
+    /// observable.modify_conditional(|i| *i == 0, |i| *i = 1); // modify
+    /// assert_eq!(fork.next().await, 1);
+    ///
+    /// observable.modify_conditional(|i| *i == 0, |i| *i = 2); // doesnt modify
+    /// fork.next().await; // runs forever
+    /// # };
+    /// ```
+    pub fn modify_conditional<C, M>(&mut self, condition: C, modify: M)
+    where
+        C: FnOnce(&T) -> bool,
+        M: FnOnce(&mut T),
+    {
+        self.apply(|value| {
+            if condition(&value) {
+                modify(value);
+                Some(value)
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Optionally apply the change retrieved by the provided closure.
+    ///
+    /// ```ignore
+    /// # use async_sub::Observable;
+    /// # async {
+    /// let mut observable = Observable::new(0);
+    ///
+    /// observable.apply(|_| None); // Has no effect
+    ///
+    /// fork.next().await; // runs forever!
+    /// # };
+    /// ```
+    ///
+    /// ```ignore
+    /// # use async_sub::Observable;
+    /// # async {
+    /// let mut observable = Observable::new(0);
+    /// let mut fork = observable.fork();
+    ///
+    /// observable.apply(|value| {
+    ///     *value = 1;
+    ///     Some(value)
+    /// });
+    ///
+    /// assert_eq!(fork.next().await, 1);
+    /// # };
+    /// ```
+    #[doc(hidden)]
+    pub(crate) fn apply<F>(&mut self, change: F)
+    where
+        F: FnOnce(&mut T) -> Option<&mut T>,
+    {
         let mut inner = self.lock();
+
+        if let None = change(&mut inner.value) {
+            return;
+        }
+
         inner.version += 1;
-        inner.value = value;
 
         for (_, waker) in &inner.waker {
             waker.wake_by_ref();
@@ -194,6 +271,23 @@ where
     #[cfg(test)]
     pub(crate) fn waker_count(&self) -> usize {
         self.inner.lock().unwrap().waker.len()
+    }
+}
+
+impl<T> Observable<T>
+where
+    T: Clone + Eq,
+{
+    /// Publish a change if the new value differs from the current one.
+    pub fn publish_if_changed(&mut self, value: T) {
+        self.apply(|v| {
+            if *v != value {
+                *v = value;
+                Some(v)
+            } else {
+                None
+            }
+        });
     }
 }
 
