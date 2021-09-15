@@ -133,6 +133,8 @@ where
 
     /// If the condition is met, modify the underlying value and notify forks.
     ///
+    /// Returns `true` if the modification was executed.
+    ///
     /// ```rust
     /// # use async_sub::Observable;
     /// # async {
@@ -146,7 +148,7 @@ where
     /// fork.next().await; // runs forever
     /// # };
     /// ```
-    pub fn modify_conditional<C, M>(&mut self, condition: C, modify: M)
+    pub fn modify_conditional<C, M>(&mut self, condition: C, modify: M) -> bool
     where
         C: FnOnce(&T) -> bool,
         M: FnOnce(&mut T),
@@ -154,21 +156,23 @@ where
         self.apply(|value| {
             if condition(value) {
                 modify(value);
-                Some(value)
+                true
             } else {
-                None
+                false
             }
         })
     }
 
     /// Optionally apply the change retrieved by the provided closure.
     ///
+    /// Returns `true` if a change was made.
+    ///
     /// ```ignore
     /// # use async_sub::Observable;
     /// # async {
     /// let mut observable = Observable::new(0);
     ///
-    /// observable.apply(|_| None); // Has no effect
+    /// observable.apply(|_| false); // Has no effect
     ///
     /// fork.next().await; // runs forever!
     /// # };
@@ -182,21 +186,21 @@ where
     ///
     /// observable.apply(|value| {
     ///     *value = 1;
-    ///     Some(value)
+    ///     true
     /// });
     ///
     /// assert_eq!(fork.next().await, 1);
     /// # };
     /// ```
     #[doc(hidden)]
-    pub(crate) fn apply<F>(&mut self, change: F)
+    pub(crate) fn apply<F>(&mut self, change: F) -> bool
     where
-        F: FnOnce(&mut T) -> Option<&mut T>,
+        F: FnOnce(&mut T) -> bool,
     {
         let mut inner = self.lock();
 
-        if change(&mut inner.value).is_none() {
-            return;
+        if !change(&mut inner.value) {
+            return false;
         }
 
         inner.version += 1;
@@ -206,6 +210,8 @@ where
         }
 
         inner.waker.clear();
+
+        true
     }
 
     /// Create a new observable from this observable. Both will listen to the same underlying value.
@@ -329,15 +335,17 @@ where
     T: Clone + Eq,
 {
     /// Publish a change if the new value differs from the current one.
-    pub fn publish_if_changed(&mut self, value: T) {
+    ///
+    /// Returns `true` if a change was made.
+    pub fn publish_if_changed(&mut self, value: T) -> bool {
         self.apply(|v| {
             if *v != value {
                 *v = value;
-                Some(v)
+                true
             } else {
-                None
+                false
             }
-        });
+        })
     }
 }
 
@@ -541,20 +549,24 @@ mod test {
         async fn should_conditionally_modify() {
             let mut int = Observable::new(1);
 
-            int.modify_conditional(|i| i % 2 == 0, |i| *i *= 2);
+            let modified = int.modify_conditional(|i| i % 2 == 0, |i| *i *= 2);
+            assert!(!modified);
             assert_eq!(int.latest(), 1);
 
-            int.modify_conditional(|i| i % 2 == 1, |i| *i *= 2);
+            let modified = int.modify_conditional(|i| i % 2 == 1, |i| *i *= 2);
+            assert!(modified);
             assert_eq!(int.latest(), 2);
 
-            int.modify_conditional(|i| i % 2 == 0, |i| *i = 1000);
+            let modified = int.modify_conditional(|i| i % 2 == 0, |i| *i = 1000);
+            assert!(modified);
             assert_eq!(int.latest(), 1000);
         }
 
         #[test]
         async fn shouldnt_publish_same_change() {
             let mut int = Observable::new(1);
-            int.publish_if_changed(1);
+            let published = int.publish_if_changed(1);
+            assert!(!published);
             assert!(timeout(TIMEOUT_DURATION, int.next()).await.is_err());
         }
 
@@ -562,10 +574,12 @@ mod test {
         async fn should_publish_changed() {
             let mut int = Observable::new(1);
 
-            int.publish_if_changed(2);
+            let published = int.publish_if_changed(2);
+            assert!(published);
             assert_eq!(int.synchronize(), 2);
 
-            int.publish_if_changed(2);
+            let published = int.publish_if_changed(2);
+            assert!(!published);
             assert!(timeout(TIMEOUT_DURATION, int.next()).await.is_err());
         }
     }
