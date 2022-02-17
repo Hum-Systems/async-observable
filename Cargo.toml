@@ -2,6 +2,8 @@
 name = "async-observable"
 version = "0.1.0"
 edition = "2018"
+description = "Async & reactive synchronization model to keep multiple async tasks / threads partially synchronized."
+
 authors = [
     "Mara Schulke <mara.schulke@hum-systems.com>",
     "Florian Uekermann <florian.uekermann@hum-systems.com>"
@@ -11,6 +13,7 @@ documentation = "https://docs.rs/async-observable"
 keywords = ["async", "await", "reactive", "observable", "synchronization"]
 categories = ["asynchronous", "concurrency", "network-programming"]
 readme = "README.md"
+license = "MIT"
 
 [dependencies]
 futures = "0.3.0"
