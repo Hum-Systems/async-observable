@@ -16,7 +16,7 @@
 //! ### Sharing A Counter Between Tasks
 //! ```rust
 //! use async_std::task::spawn;
-//! use async_sub::Observable;
+//! use async_observable::Observable;
 //!
 //! #[async_std::main]
 //! async fn main() {
@@ -59,7 +59,7 @@ use std::{
 /// the preferred way.
 ///
 /// ```rust
-/// # use async_sub::Observable;
+/// # use async_observable::Observable;
 /// let mut using_new = Observable::new(0);
 /// let mut using_from = Observable::from(0);
 /// let mut using_into: Observable<u8> = 0.into();
@@ -69,7 +69,7 @@ use std::{
 /// Publishing a new version is done by a single call to the `publish()` method.
 ///
 /// ```rust
-/// # use async_sub::Observable;
+/// # use async_observable::Observable;
 /// # let mut observable = Observable::new(0);
 /// observable.publish(1);
 /// observable.publish(2);
@@ -79,7 +79,7 @@ use std::{
 /// ## Receiving Updates
 ///
 /// ```rust
-/// # use async_sub::Observable;
+/// # use async_observable::Observable;
 /// # async {
 /// let mut observable = Observable::new(0);
 /// let mut fork = observable.fork();
@@ -136,7 +136,7 @@ where
     /// Returns `true` if the modification was executed.
     ///
     /// ```rust
-    /// # use async_sub::Observable;
+    /// # use async_observable::Observable;
     /// # async {
     /// let mut observable = Observable::new(0);
     /// let mut fork = observable.fork();
@@ -168,7 +168,7 @@ where
     /// Returns `true` if a change was made.
     ///
     /// ```ignore
-    /// # use async_sub::Observable;
+    /// # use async_observable::Observable;
     /// # async {
     /// let mut observable = Observable::new(0);
     ///
@@ -179,7 +179,7 @@ where
     /// ```
     ///
     /// ```ignore
-    /// # use async_sub::Observable;
+    /// # use async_observable::Observable;
     /// # async {
     /// let mut observable = Observable::new(0);
     /// let mut fork = observable.fork();
@@ -217,7 +217,7 @@ where
     /// Create a new observable from this observable. Both will listen to the same underlying value.
     ///
     /// ```rust
-    /// # use async_sub::Observable;
+    /// # use async_observable::Observable;
     /// # async {
     /// let mut observable = Observable::new(0);
     /// let mut fork = observable.fork();
@@ -233,7 +233,7 @@ where
     /// current state.
     ///
     /// ```rust
-    /// # use async_sub::Observable;
+    /// # use async_observable::Observable;
     /// # async {
     /// let mut observable = Observable::new(0);
     /// let mut fork = observable.fork_and_reset();
@@ -251,7 +251,7 @@ where
     /// Creates a clone of latest version of the observable value, *without consuming the change!*
     ///
     /// ```rust
-    /// # use async_sub::Observable;
+    /// # use async_observable::Observable;
     /// # async {
     /// let mut observable = Observable::new(0);
     /// let mut fork = observable.fork_and_reset();
@@ -271,7 +271,7 @@ where
     /// clone of the new version.
     ///
     /// ```rust
-    /// # use async_sub::Observable;
+    /// # use async_observable::Observable;
     /// # async {
     /// let mut observable = Observable::new(0);
     /// let mut fork = observable.fork_and_reset();
@@ -293,7 +293,7 @@ where
     /// observed value.
     ///
     /// ```rust
-    /// # use async_sub::Observable;
+    /// # use async_observable::Observable;
     /// # async {
     /// let mut observable = Observable::new(0);
     /// let mut fork = observable.fork();

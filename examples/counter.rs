@@ -1,5 +1,5 @@
+use async_observable::Observable;
 use async_std::task::spawn;
-use async_sub::Observable;
 
 #[async_std::main]
 async fn main() {

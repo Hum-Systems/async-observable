@@ -1,13 +1,13 @@
 [package]
-name = "async-sub"
+name = "async-observable"
 version = "0.1.0"
 edition = "2018"
 authors = [
-    "Maximilian Schulke <maximilian.schulke@hum-systems.com>",
+    "Mara Schulke <mara.schulke@hum-systems.com>",
     "Florian Uekermann <florian.uekermann@hum-systems.com>"
 ]
-repository = "https://github.com/Hum-Systems/async-sub"
-documentation = "https://docs.rs/async-sub"
+repository = "https://github.com/Hum-Systems/async-observable"
+documentation = "https://docs.rs/async-observable"
 keywords = ["async", "await", "reactive", "observable", "synchronization"]
 categories = ["asynchronous", "concurrency", "network-programming"]
 readme = "README.md"

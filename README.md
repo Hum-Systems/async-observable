@@ -1,4 +1,4 @@
-<h1 align="center">async-sub</h1>
+<h1 align="center">async-observable</h1>
 <div align="center">
   <strong>
     Async & reactive synchronization model to keep multiple async tasks /
@@ -7,11 +7,11 @@
 </div>
 <br />
 <div align="center">
-  <a href="https://crates.io/crates/async-sub">
-    <img src="https://img.shields.io/crates/v/async-sub.svg?style=flat-square"
+  <a href="https://crates.io/crates/async-observable">
+    <img src="https://img.shields.io/crates/v/async-observable.svg?style=flat-square"
     alt="crates.io version" />
   </a>
-  <a href="https://docs.rs/async-sub">
+  <a href="https://docs.rs/async-observable">
     <img src="https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square"
       alt="docs.rs docs" />
   </a>
@@ -22,7 +22,7 @@
 ### Simple Forking
 
 ```rust
-use async_sub::Observable;
+use async_observable::Observable;
 
 #[async_std::main]
 async fn main() {
@@ -39,7 +39,7 @@ async fn main() {
 
 ```rust
 use async_std::task::{sleep, spawn};
-use async_sub::Observable;
+use async_observable::Observable;
 
 #[async_std::main]
 async fn main() {
@@ -75,7 +75,7 @@ observable, which we publish only once.
 
 ```rust
 use async_std::task::{sleep, spawn};
-use async_sub::Observable;
+use async_observable::Observable;
 use futures::join;
 
 #[async_std::main]
